@@ -1,9 +1,10 @@
 name: Telegram Daily Reminder
 
 on:
-  schedule:
-    # 15:00 UTC tương đương 22:00 (10h tối) Việt Nam (GMT+7)
-    - cron: '0 15 * * *'
+  # Đã chuyển lịch hẹn sang Vercel Cron để chạy ổn định và đúng giờ hơn
+  # schedule:
+  #   # 15:00 UTC tương đương 22:00 (10h tối) Việt Nam (GMT+7)
+  #   - cron: '0 15 * * *'
   workflow_dispatch: # Cho phép kích hoạt chạy bằng tay trên web GitHub
 
 jobs:
