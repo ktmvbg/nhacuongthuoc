@@ -6,6 +6,6 @@ services:
     startCommand: python bot/bot.py
     envVars:
       - key: TELEGRAM_BOT_TOKEN
-        value: 8906408674:AAEsnbLJRseKRtl6i08DE6JDNGvZxwLwKGM
+        sync: false # Nhập thủ công khi bấm deploy để bảo mật
       - key: TELEGRAM_CHAT_ID
-        value: "1389109644"
+        value: "1389109644" # ID chat công khai được điền sẵn
