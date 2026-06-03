@@ -384,3 +384,83 @@ header p {
     transform: translateY(-10vh) rotate(360deg);
   }
 }
+
+/* Stardust Calendar Styles */
+.calendar-cell.has-period {
+  background: #fff0f3 !important;
+  border-color: #ff4d6d !important;
+}
+
+.calendar-cell.has-period::after {
+  content: '🔴';
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  font-size: 0.65rem;
+}
+
+.calendar-cell.has-ovulation {
+  background: #e8f8fd !important;
+  border-color: #4cc9f0 !important;
+}
+
+.calendar-cell.has-ovulation::after {
+  content: '🔵';
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  font-size: 0.65rem;
+}
+
+.calendar-legend-stardust {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+  margin-top: 10px;
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Stardust Sync Panel Card */
+.stardust-sync-card {
+  margin-top: 24px;
+}
+
+.stardust-sync-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 15px;
+}
+
+.stardust-sync-form input {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--pink-pastel);
+  background: #fff;
+  font-family: var(--font-sans);
+  color: var(--pink-deep);
+  outline: none;
+  font-size: 0.9rem;
+}
+
+.stardust-sync-form input:focus {
+  border-color: var(--pink-primary);
+}
+
+.btn-blue {
+  background: #4cc9f0;
+  box-shadow: 0 4px 10px rgba(76, 201, 240, 0.3);
+}
+
+.btn-blue:hover {
+  background: #75dbf7;
+  box-shadow: 0 6px 15px rgba(76, 201, 240, 0.4);
+}
+

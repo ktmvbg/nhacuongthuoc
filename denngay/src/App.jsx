@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 
 // URL của Server Bot (Mặc định để trống sẽ dùng đường dẫn tương đối của Vercel)
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -19,6 +19,33 @@ const getLocalTimeString = () => {
   return `${hh}:${mm}`;
 };
 
+// Giải mã payload từ Google ID Token JWT
+const decodeJwt = (token) => {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    return null;
+  }
+};
+
+// Định dạng ngày sang YYYY-MM-DD theo múi giờ địa phương
+const formatDateISO = (date) => {
+  const d = new Date(date);
+  let month = '' + (d.getMonth() + 1);
+  let day = '' + d.getDate();
+  const year = d.getFullYear();
+
+  if (month.length < 2) month = '0' + month;
+  if (day.length < 2) day = '0' + day;
+
+  return [year, month, day].join('-');
+};
+
 function App() {
   const [logs, setLogs] = useState([]);
   const [streak, setStreak] = useState(0);
@@ -29,6 +56,33 @@ function App() {
   const [formTime, setFormTime] = useState(getLocalTimeString());
   const [formNote, setFormNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Các State cho Stardust và Google OAuth
+  const [stardustLogs, setStardustLogs] = useState(null);
+  const [googleUser, setGoogleUser] = useState(null);
+  const [rowndToken, setRowndToken] = useState(null);
+  const [googleClientId, setGoogleClientId] = useState(
+    localStorage.getItem('google_client_id') || '900415098360-ritfis4563e74sluvre9nsmhi2oa4uf0.apps.googleusercontent.com'
+  );
+  const [isSyncingStardust, setIsSyncingStardust] = useState(false);
+  const [showClientIdInput, setShowClientIdInput] = useState(false);
+
+  // Tải session đã lưu của Stardust khi khởi chạy
+  useEffect(() => {
+    const rawSession = localStorage.getItem('stardust_session');
+    if (rawSession) {
+      try {
+        const session = JSON.parse(rawSession);
+        if (session.googleUser) setGoogleUser(session.googleUser);
+        if (session.rowndToken) {
+          setRowndToken(session.rowndToken);
+          fetchStardustLogs(session.rowndToken);
+        }
+      } catch (e) {
+        console.error('Không thể load session Stardust:', e);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     fetchLogs();
@@ -41,6 +95,152 @@ function App() {
       setStreak(0);
     }
   }, [logs]);
+
+  // Các hàm chức năng cho Stardust
+  const fetchStardustLogs = async (token) => {
+    setIsSyncingStardust(true);
+    try {
+      const res = await fetch(`${API_URL}/api/extract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ access_token: token })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setStardustLogs(data);
+      } else {
+        throw new Error(data.error || 'Failed to extract logs');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Không thể tải dữ liệu Stardust. Vui lòng kiểm tra lại token hoặc đăng nhập lại.');
+      handleStardustLogout();
+    } finally {
+      setIsSyncingStardust(false);
+    }
+  };
+
+  const handleGoogleIdToken = async (idToken) => {
+    const payload = decodeJwt(idToken);
+    let user = null;
+    if (payload) {
+      user = {
+        name: payload.name,
+        email: payload.email,
+        picture: payload.picture
+      };
+      setGoogleUser(user);
+    }
+
+    setIsSyncingStardust(true);
+    try {
+      const authRes = await fetch(`${API_URL}/api/authenticate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_token: idToken })
+      });
+
+      const authData = await authRes.json();
+      if (authRes.ok && authData.access_token) {
+        setRowndToken(authData.access_token);
+        localStorage.setItem('stardust_session', JSON.stringify({
+          googleUser: user,
+          rowndToken: authData.access_token
+        }));
+        await fetchStardustLogs(authData.access_token);
+      } else {
+        throw new Error(authData.error || 'Authentication failed');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Đăng nhập Stardust thất bại: ' + err.message);
+    } finally {
+      setIsSyncingStardust(false);
+    }
+  };
+
+  const loginWithGooglePopup = () => {
+    const client_id = googleClientId.trim();
+    if (!client_id) {
+      alert('Vui lòng cấu hình Google Client ID trước.');
+      return;
+    }
+    const redirect_uri = window.location.origin + '/';
+    const scope = 'openid email profile';
+    const nonce = 'stardust_' + Math.random().toString(36).substring(2);
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${client_id}&redirect_uri=${encodeURIComponent(redirect_uri)}&response_type=id_token&scope=${encodeURIComponent(scope)}&nonce=${nonce}`;
+    
+    const width = 500;
+    const height = 650;
+    const left = (window.screen.width - width) / 2;
+    const top = (window.screen.height - height) / 2;
+    
+    const popup = window.open(
+      authUrl,
+      'GoogleLoginPopup',
+      `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes`
+    );
+    
+    if (!popup) {
+      alert('Trình duyệt đã chặn cửa sổ Popup. Vui lòng cho phép popup để đăng nhập bằng Google.');
+      return;
+    }
+    
+    const pollTimer = window.setInterval(() => {
+      try {
+        if (popup.closed) {
+          window.clearInterval(pollTimer);
+          return;
+        }
+        
+        if (popup.location.origin === window.location.origin) {
+          const hash = popup.location.hash;
+          if (hash) {
+            window.clearInterval(pollTimer);
+            popup.close();
+            
+            const params = new URLSearchParams(hash.substring(1));
+            const idToken = params.get('id_token');
+            if (idToken) {
+              handleGoogleIdToken(idToken);
+            }
+          }
+        }
+      } catch (e) {
+        // Bỏ qua lỗi CORS khi ở domain Google
+      }
+    }, 500);
+  };
+
+  const handleStardustLogout = () => {
+    localStorage.removeItem('stardust_session');
+    setGoogleUser(null);
+    setRowndToken(null);
+    setStardustLogs(null);
+  };
+
+  const handleSaveClientId = (newId) => {
+    localStorage.setItem('google_client_id', newId);
+    setGoogleClientId(newId);
+    alert('Đã lưu Google Client ID thành công! 🌸');
+    setShowClientIdInput(false);
+  };
+
+  // Map dữ liệu để tra cứu nhanh theo ngày YYYY-MM-DD
+  const stardustLogsMap = useMemo(() => {
+    if (!stardustLogs) return {};
+    const list = Array.isArray(stardustLogs)
+      ? stardustLogs
+      : (stardustLogs.logs || stardustLogs.data || []);
+    
+    const map = {};
+    list.forEach((log) => {
+      if (log.date) {
+        map[log.date] = log;
+      }
+    });
+    return map;
+  }, [stardustLogs]);
 
   const fetchLogs = async () => {
     setIsLoading(true);
@@ -229,8 +429,31 @@ function App() {
         heartIcon = '⏰';
       }
 
+      // Xác định trạng thái từ Stardust (hành kinh / rụng trứng)
+      const dateStr = formatDateISO(cellDate);
+      const dayLog = stardustLogsMap[dateStr];
+      let hasPeriod = false;
+      let hasOvulation = false;
+
+      if (dayLog) {
+        hasPeriod = dayLog.period === true || 
+                    dayLog.bleeding === true || 
+                    (dayLog.flow && dayLog.flow !== 'none') || 
+                    (dayLog.fields && (dayLog.fields.period || dayLog.fields.bleeding));
+                    
+        hasOvulation = dayLog.ovulation === true || 
+                       (dayLog.fields && dayLog.fields.ovulation);
+      }
+
+      const classes = [
+        'calendar-cell',
+        cellClass,
+        hasPeriod ? 'has-period' : '',
+        hasOvulation ? 'has-ovulation' : ''
+      ].filter(Boolean).join(' ');
+
       cells.push(
-        <div key={`day-${day}`} className={`calendar-cell ${cellClass}`}>
+        <div key={`day-${day}`} className={classes}>
           <span className="day-num">{day}</span>
           {heartIcon && <span className="heart-indicator">{heartIcon}</span>}
         </div>
@@ -322,6 +545,167 @@ function App() {
             </form>
           </div>
 
+          {/* Đồng bộ Stardust */}
+          <div className="card stardust-sync-card" style={{ marginBottom: '24px' }}>
+            <h2>Đồng bộ Stardust 🩸</h2>
+            {isSyncingStardust ? (
+              <p style={{ textAlign: 'center', padding: '10px' }}>Đang đồng bộ dữ liệu...</p>
+            ) : !googleUser ? (
+              <div className="stardust-sync-form">
+                <p style={{ fontSize: '0.85rem', opacity: 0.8 }}>
+                  Kết nối với tài khoản Stardust của bạn qua Google để hiển thị ngày hành kinh và rụng trứng trên lịch.
+                </p>
+                
+                <button
+                  type="button"
+                  onClick={loginWithGooglePopup}
+                  className="btn-pink"
+                  style={{ width: '100%' }}
+                >
+                  Đăng nhập Google 🔑
+                </button>
+
+                <div style={{ marginTop: '8px', textAlign: 'center' }}>
+                  <a
+                    href="#configure"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setShowClientIdInput(!showClientIdInput);
+                    }}
+                    style={{ fontSize: '0.8rem', color: 'var(--pink-hover)', textDecoration: 'underline', cursor: 'pointer' }}
+                  >
+                    {showClientIdInput ? 'Ẩn cấu hình Client ID' : 'Cấu hình Google Client ID'}
+                  </a>
+                </div>
+
+                {showClientIdInput && (
+                  <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 600 }}>Google Client ID:</label>
+                    <input
+                      type="text"
+                      value={googleClientId}
+                      onChange={(e) => setGoogleClientId(e.target.value)}
+                      placeholder="Nhập Google Client ID của bạn..."
+                      style={{ fontSize: '0.8rem', padding: '8px' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSaveClientId(googleClientId)}
+                      className="btn-pink"
+                      style={{ fontSize: '0.85rem', padding: '6px 12px', background: '#7209b7' }}
+                    >
+                      Lưu ID
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '15px' }}>
+                  <img
+                    src={googleUser.picture || 'https://lh3.googleusercontent.com/a/default-user'}
+                    alt="Avatar"
+                    style={{ width: '40px', height: '40px', borderRadius: '50%', border: '2px solid var(--pink-pastel)' }}
+                  />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {googleUser.name}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {googleUser.email}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Thống kê Stardust */}
+                {(() => {
+                  const list = Array.isArray(stardustLogs) ? stardustLogs : (stardustLogs?.logs || stardustLogs?.data || []);
+                  
+                  // Tính chu kỳ / kinh nguyệt trung bình
+                  const periodDays = list.filter(item => {
+                    return item.period === true || 
+                           item.bleeding === true || 
+                           (item.flow && item.flow !== 'none') || 
+                           (item.symptoms && item.symptoms.includes('bleeding')) ||
+                           (item.fields && (item.fields.period || item.fields.bleeding));
+                  }).map(item => item.date).sort();
+
+                  let avgPeriodLength = '--';
+                  let avgCycleLength = '--';
+
+                  if (periodDays.length > 0) {
+                    const periods = [];
+                    let currentPeriod = [new Date(periodDays[0])];
+
+                    for (let i = 1; i < periodDays.length; i++) {
+                      const prevDate = new Date(periodDays[i - 1]);
+                      const currDate = new Date(periodDays[i]);
+                      const diffTime = Math.abs(currDate - prevDate);
+                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                      if (diffDays <= 2) {
+                        currentPeriod.push(currDate);
+                      } else {
+                        periods.push(currentPeriod);
+                        currentPeriod = [currDate];
+                      }
+                    }
+                    periods.push(currentPeriod);
+
+                    const totalPeriodDays = periods.reduce((sum, p) => sum + p.length, 0);
+                    avgPeriodLength = `${Math.round(totalPeriodDays / periods.length)} ngày`;
+
+                    if (periods.length > 1) {
+                      let cycleDiffSum = 0;
+                      for (let i = 1; i < periods.length; i++) {
+                        const prevStart = periods[i - 1][0];
+                        const currStart = periods[i][0];
+                        const diffTime = Math.abs(currStart - prevStart);
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        cycleDiffSum += diffDays;
+                      }
+                      avgCycleLength = `${Math.round(cycleDiffSum / (periods.length - 1))} ngày`;
+                    } else {
+                      avgCycleLength = '28 ngày';
+                    }
+                  }
+
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '15px' }}>
+                      <div style={{ background: '#fff', padding: '10px', borderRadius: '8px', border: '1px solid var(--pink-pastel)', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--pink-primary)' }}>{avgPeriodLength}</div>
+                        <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>Kỳ kinh TB</div>
+                      </div>
+                      <div style={{ background: '#fff', padding: '10px', borderRadius: '8px', border: '1px solid var(--pink-pastel)', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--pink-primary)' }}>{avgCycleLength}</div>
+                        <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>Chu kỳ TB</div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => fetchStardustLogs(rowndToken)}
+                    className="btn-pink btn-blue"
+                    style={{ flex: 1, fontSize: '0.9rem', padding: '10px' }}
+                  >
+                    Đồng bộ lại 🔄
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleStardustLogout}
+                    className="btn-pink"
+                    style={{ flex: 1, fontSize: '0.9rem', padding: '10px', background: '#ccc', color: '#333', boxShadow: 'none' }}
+                  >
+                    Đăng xuất 🚪
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="card">
             <h2>Kiểm thử Bot 🧪</h2>
             <p style={{ fontSize: '0.85rem', opacity: 0.8, marginBottom: '15px' }}>
@@ -364,6 +748,19 @@ function App() {
               <div className="calendar-grid">
                 {renderCalendar()}
               </div>
+
+              {googleUser && (
+                <div className="calendar-legend-stardust">
+                  <div className="legend-item">
+                    <span>🔴</span>
+                    <span>Ngày hành kinh</span>
+                  </div>
+                  <div className="legend-item">
+                    <span>🔵</span>
+                    <span>Ngày rụng trứng</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
