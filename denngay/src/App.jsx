@@ -3,12 +3,30 @@ import React, { useState, useEffect } from 'react';
 // URL của Server Bot (Mặc định để trống sẽ dùng đường dẫn tương đối của Vercel)
 const API_URL = import.meta.env.VITE_API_URL || '';
 
+// Hàm lấy ngày hiện tại (YYYY-MM-DD) theo múi giờ địa phương
+const getLocalDateString = () => {
+  const d = new Date();
+  const offset = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - (offset * 60 * 1000));
+  return local.toISOString().split('T')[0];
+};
+
+// Hàm lấy giờ hiện tại (HH:MM) theo múi giờ địa phương
+const getLocalTimeString = () => {
+  const d = new Date();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+};
+
 function App() {
   const [logs, setLogs] = useState([]);
   const [streak, setStreak] = useState(0);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [isLoading, setIsLoading] = useState(true);
   const [formStatus, setFormStatus] = useState('taken');
+  const [formDate, setFormDate] = useState(getLocalDateString());
+  const [formTime, setFormTime] = useState(getLocalTimeString());
   const [formNote, setFormNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -88,6 +106,10 @@ function App() {
 
     setIsSubmitting(true);
     try {
+      // Ghép ngày và giờ được chọn thành định dạng ISO để gửi lên server
+      const localDateTime = new Date(`${formDate}T${formTime}`);
+      const created_at = localDateTime.toISOString();
+
       const response = await fetch(`${API_URL}/api/logs`, {
         method: 'POST',
         headers: {
@@ -95,7 +117,8 @@ function App() {
         },
         body: JSON.stringify({
           status: formStatus,
-          note: formNote || null
+          note: formNote || null,
+          created_at
         })
       });
 
@@ -104,12 +127,38 @@ function App() {
       }
 
       setFormNote('');
+      setFormDate(getLocalDateString());
+      setFormTime(getLocalTimeString());
       await fetchLogs();
       alert('Đã cập nhật lịch sử uống thuốc thành công! 🌸');
     } catch (err) {
       alert('Không thể lưu: ' + err.message);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Hàm xóa bản ghi lịch sử
+  const handleDeleteLog = async (id) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa bản ghi này không? 🌸')) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/logs`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ id })
+      });
+
+      if (!response.ok) {
+        throw new Error('Lỗi từ máy chủ khi xóa bản ghi');
+      }
+
+      await fetchLogs();
+      alert('Đã xóa bản ghi thành công! 🌸');
+    } catch (err) {
+      alert('Không thể xóa: ' + err.message);
     }
   };
 
@@ -238,6 +287,23 @@ function App() {
                 <option value="taken">Đã uống 🌸</option>
                 <option value="delayed">Hẹn tí nữa ⏰</option>
               </select>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="date"
+                  value={formDate}
+                  onChange={(e) => setFormDate(e.target.value)}
+                  style={{ width: '60%' }}
+                  required
+                />
+                <input
+                  type="time"
+                  value={formTime}
+                  onChange={(e) => setFormTime(e.target.value)}
+                  style={{ width: '40%' }}
+                  required
+                />
+              </div>
               
               <input
                 type="text"
@@ -324,9 +390,28 @@ function App() {
                         </span>
                       )}
                     </div>
-                    <span className="history-time">
-                      {formatDate(log.created_at)}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span className="history-time">
+                        {formatDate(log.created_at)}
+                      </span>
+                      <button
+                        onClick={() => handleDeleteLog(log.id)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontSize: '1rem',
+                          opacity: 0.6,
+                          transition: 'opacity 0.2s',
+                          padding: '4px'
+                        }}
+                        title="Xóa bản ghi này"
+                        onMouseEnter={(e) => e.target.style.opacity = 1}
+                        onMouseLeave={(e) => e.target.style.opacity = 0.6}
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

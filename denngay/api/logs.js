@@ -1,7 +1,7 @@
 export default async function handler(req, res) {
   // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
@@ -47,17 +47,17 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    const { status, note } = req.body;
+    const { status, note, created_at } = req.body;
     if (!status) {
       return res.status(400).json({ error: 'Missing status' });
     }
 
     const { content, sha } = await getFile();
     
-    // Tạo bản ghi mới
+    // Tạo bản ghi mới, hỗ trợ custom created_at
     const newLog = {
       id: Math.random().toString(36).substring(2),
-      created_at: new Date().toISOString(),
+      created_at: created_at || new Date().toISOString(),
       status,
       note: note || null
     };
@@ -88,6 +88,43 @@ export default async function handler(req, res) {
     }
 
     return res.status(201).json(newLog);
+  }
+
+  if (req.method === 'DELETE') {
+    const { id } = req.body;
+    if (!id) {
+      return res.status(400).json({ error: 'Missing id' });
+    }
+
+    const { content, sha } = await getFile();
+    
+    // Lọc bỏ bản ghi cần xóa
+    const updatedContent = content.filter((log) => log.id !== id);
+    const updatedContentB64 = Buffer.from(JSON.stringify(updatedContent, null, 2)).toString('base64');
+
+    const body = {
+      message: 'Delete medicine log via web',
+      content: updatedContentB64,
+    };
+    if (sha) {
+      body.sha = sha;
+    }
+
+    const putResponse = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        ...headers,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!putResponse.ok) {
+      const errText = await putResponse.text();
+      return res.status(500).json({ error: `GitHub PUT error: ${errText}` });
+    }
+
+    return res.status(200).json({ success: true });
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
