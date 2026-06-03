@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: denngay-bot
+    runtime: python
+    buildCommand: pip install -r bot/requirements.txt
+    startCommand: python bot/bot.py
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        value: 8906408674:AAEsnbLJRseKRtl6i08DE6JDNGvZxwLwKGM
+      - key: TELEGRAM_CHAT_ID
+        value: "1389109644"
