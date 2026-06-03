@@ -62,13 +62,20 @@ function App() {
   const [googleUser, setGoogleUser] = useState(null);
   const [rowndToken, setRowndToken] = useState(null);
   const [googleClientId, setGoogleClientId] = useState(
-    localStorage.getItem('google_client_id') || '900415098360-ritfls4563e74sluvre9nsmhi2oa4uf0.apps.googleusercontent.com'
+    localStorage.getItem('google_client_id') || '900415098360-ritfis4563e74sluvre9nsmhi2oa4uf0.apps.googleusercontent.com'
   );
   const [isSyncingStardust, setIsSyncingStardust] = useState(false);
   const [showClientIdInput, setShowClientIdInput] = useState(false);
 
   // Tải session đã lưu của Stardust khi khởi chạy
   useEffect(() => {
+    // Tự động dọn dẹp Client ID có lỗi chính tả trong localStorage của người dùng
+    const savedId = localStorage.getItem('google_client_id');
+    if (savedId && (savedId.includes('ritfls') || savedId.includes('slvvre'))) {
+      localStorage.removeItem('google_client_id');
+      setGoogleClientId('900415098360-ritfis4563e74sluvre9nsmhi2oa4uf0.apps.googleusercontent.com');
+    }
+
     const rawSession = localStorage.getItem('stardust_session');
     if (rawSession) {
       try {
