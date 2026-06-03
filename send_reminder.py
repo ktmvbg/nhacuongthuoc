@@ -18,7 +18,6 @@ if os.path.exists(env_file):
         for line in f:
             line = line.strip()
             if line and not line.startswith('#'):
-                # Bỏ qua dòng chú thích
                 key, val = line.split('=', 1)
                 os.environ[key.strip()] = val.strip()
 
@@ -29,24 +28,33 @@ if not token or not chat_id:
     print("Lỗi: Thiếu biến môi trường TELEGRAM_BOT_TOKEN hoặc TELEGRAM_CHAT_ID.")
     exit(1)
 
-message = "Đến giờ uống thuốc rồi em iu ơi"
+# Định nghĩa giao diện nút bấm tương tác
+reply_markup = {
+    "inline_keyboard": [
+        [
+            {"text": "Đã uống 🌸", "callback_data": "taken"},
+            {"text": "Để tí nữa ⏰", "callback_data": "later"}
+        ]
+    ]
+}
 
 url = f"https://api.telegram.org/bot{token}/sendMessage"
 data = urllib.parse.urlencode({
     'chat_id': chat_id,
-    'text': message
+    'text': "Đến giờ uống thuốc rồi em iu ơi! 🌸",
+    'reply_markup': json.dumps(reply_markup)
 }).encode('utf-8')
 
 req = urllib.request.Request(url, data=data, method='POST')
 req.add_header('Content-Type', 'application/x-www-form-urlencoded')
 
 try:
-    print("Đang gửi tin nhắn nhắc nhở...")
+    print("Đang gửi tin nhắc nhở kèm nút bấm tương tác...")
     with urllib.request.urlopen(req) as response:
         res_body = response.read().decode('utf-8')
         res_json = json.loads(res_body)
         if res_json.get("ok"):
-            print("Tin nhắn đã được gửi thành công!")
+            print("Tin nhắn nhắc nhở đã được gửi thành công!")
         else:
             print(f"Gửi tin nhắn thất bại: {res_body}")
 except urllib.error.HTTPError as he:

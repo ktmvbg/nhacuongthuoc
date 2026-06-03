@@ -2,3 +2,9 @@
 __pycache__/
 *.pyc
 .DS_Store
+web/node_modules/
+web/dist/
+web/.env
+web/.env.local
+web/dist_electron/
+web/route.json
