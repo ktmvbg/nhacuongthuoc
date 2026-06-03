@@ -1,0 +1,26 @@
+name: Telegram Daily Reminder
+
+on:
+  schedule:
+    # 15:00 UTC tương đương 22:00 (10h tối) Việt Nam (GMT+7)
+    - cron: '0 15 * * *'
+  workflow_dispatch: # Cho phép kích hoạt chạy bằng tay trên web GitHub
+
+jobs:
+  send-reminder:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Run reminder script
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python send_reminder.py
