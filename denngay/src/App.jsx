@@ -62,7 +62,7 @@ function App() {
   const [googleUser, setGoogleUser] = useState(null);
   const [rowndToken, setRowndToken] = useState(null);
   const [googleClientId, setGoogleClientId] = useState(
-    localStorage.getItem('google_client_id') || '900415098360-ritfis4563e74sluvre9nsmhi2oa4uf0.apps.googleusercontent.com'
+    localStorage.getItem('google_client_id') || '900415098360-ritfls4563e74sluvre9nsmhi2oa4uf0.apps.googleusercontent.com'
   );
   const [isSyncingStardust, setIsSyncingStardust] = useState(false);
   const [showClientIdInput, setShowClientIdInput] = useState(false);
@@ -165,7 +165,7 @@ function App() {
       alert('Vui lòng cấu hình Google Client ID trước.');
       return;
     }
-    const redirect_uri = window.location.origin + '/';
+    const redirect_uri = window.location.origin;
     const scope = 'openid email profile';
     const nonce = 'stardust_' + Math.random().toString(36).substring(2);
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${client_id}&redirect_uri=${encodeURIComponent(redirect_uri)}&response_type=id_token&scope=${encodeURIComponent(scope)}&nonce=${nonce}`;

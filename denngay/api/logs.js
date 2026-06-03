@@ -54,19 +54,44 @@ export default async function handler(req, res) {
 
     const { content, sha } = await getFile();
     
+    // Helper kiểm tra xem hai mốc thời gian có cùng ngày theo giờ Việt Nam (GMT+7) không
+    function isSameDayVN(dateStr1, dateStr2) {
+      try {
+        const d1 = new Date(dateStr1);
+        const d2 = new Date(dateStr2);
+        const getVNString = (d) => d.toLocaleDateString('en-US', {
+          timeZone: 'Asia/Ho_Chi_Minh',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        });
+        return getVNString(d1) === getVNString(d2);
+      } catch (e) {
+        return false;
+      }
+    }
+
+    const targetDateStr = created_at || new Date().toISOString();
+
     // Tạo bản ghi mới, hỗ trợ custom created_at
     const newLog = {
       id: Math.random().toString(36).substring(2),
-      created_at: created_at || new Date().toISOString(),
+      created_at: targetDateStr,
       status,
       note: note || null
     };
 
-    content.push(newLog);
-    const updatedContentB64 = Buffer.from(JSON.stringify(content, null, 2)).toString('base64');
+    let updatedContent = content;
+    if (status === 'taken') {
+      // Lọc bỏ tất cả các log của ngày hôm nay (hoặc ngày của targetDateStr) trước khi lưu trạng thái 'taken'
+      updatedContent = content.filter(log => !isSameDayVN(log.created_at, targetDateStr));
+    }
+
+    updatedContent.push(newLog);
+    const updatedContentB64 = Buffer.from(JSON.stringify(updatedContent, null, 2)).toString('base64');
 
     const body = {
-      message: 'Add medicine log via web',
+      message: status === 'taken' ? 'Register taken and clean daily logs via web' : 'Add medicine log via web',
       content: updatedContentB64,
     };
     if (sha) {

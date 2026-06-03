@@ -42,19 +42,44 @@ export default async function handler(req, res) {
     }
   }
 
+  // Helper kiểm tra xem hai mốc thời gian có cùng ngày theo giờ Việt Nam (GMT+7) không
+  function isSameDayVN(dateStr1, dateStr2) {
+    try {
+      const d1 = new Date(dateStr1);
+      const d2 = new Date(dateStr2);
+      const getVNString = (d) => d.toLocaleDateString('en-US', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+      return getVNString(d1) === getVNString(d2);
+    } catch (e) {
+      return false;
+    }
+  }
+
   // Ghi log vào file db.json trên GitHub
   async function saveLog(status) {
     const { content, sha } = await getFile();
+    const now = new Date();
     const newLog = {
       id: Math.random().toString(36).substring(2),
-      created_at: new Date().toISOString(),
+      created_at: now.toISOString(),
       status,
       note: 'Ghi nhận qua Telegram Bot'
     };
-    content.push(newLog);
-    const updatedContentB64 = Buffer.from(JSON.stringify(content, null, 2)).toString('base64');
+
+    let updatedContent = content;
+    if (status === 'taken') {
+      // Lọc bỏ tất cả các log của ngày hôm nay (giờ VN) trước khi lưu trạng thái 'taken'
+      updatedContent = content.filter(log => !isSameDayVN(log.created_at, now.toISOString()));
+    }
+
+    updatedContent.push(newLog);
+    const updatedContentB64 = Buffer.from(JSON.stringify(updatedContent, null, 2)).toString('base64');
     const putBody = {
-      message: 'Add medicine log via Telegram',
+      message: status === 'taken' ? 'Register taken and clean daily logs' : 'Add medicine log via Telegram',
       content: updatedContentB64,
     };
     if (sha) putBody.sha = sha;
