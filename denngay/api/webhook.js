@@ -115,6 +115,29 @@ export default async function handler(req, res) {
     };
     await editMessageText('Oki em iu, nhớ uống thuốc nhé! Khi nào uống xong em bấm nút "Đã uống 🌸" dưới đây nha. ⏰', replyMarkup);
     await answerCallbackQuery('Đã hẹn tí nữa uống!');
+
+    // Kích hoạt GitHub Action workflow báo lại sau 10 phút
+    try {
+      const triggerUrl = `https://api.github.com/repos/${owner}/${repo}/actions/workflows/snooze.yml/dispatches`;
+      await fetch(triggerUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'Vercel-Serverless',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ref: 'main',
+          inputs: {
+            chat_id: String(chatId)
+          }
+        })
+      });
+      console.log('Đã kích hoạt snooze workflow.');
+    } catch (err) {
+      console.error('Lỗi khi kích hoạt snooze workflow:', err.message);
+    }
     
   } else if (callbackData === 'test_taken') {
     // Không ghi nhận log vào DB
