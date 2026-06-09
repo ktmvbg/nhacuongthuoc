@@ -59,27 +59,46 @@ export default async function handler(req, res) {
     }
   }
 
+  // Helper dịch chuyển thời gian về ngày hôm trước nếu giờ Việt Nam < 12:00 trưa (trước 12h trưa)
+  function getAdjustedTimestamp(dateStr) {
+    try {
+      const date = new Date(dateStr);
+      // Giờ Việt Nam bằng giờ UTC cộng 7 tiếng
+      const vnTime = new Date(date.getTime() + 7 * 60 * 60 * 1000);
+      const vnHour = vnTime.getUTCHours();
+      if (vnHour < 12) {
+        // Trừ đi 24 giờ để lùi lại 1 ngày
+        return new Date(date.getTime() - 24 * 60 * 60 * 1000).toISOString();
+      }
+      return date.toISOString();
+    } catch (e) {
+      return dateStr;
+    }
+  }
+
   // Ghi log vào file db.json trên GitHub
   async function saveLog(status) {
     const { content, sha } = await getFile();
     const now = new Date();
+    const targetDateStr = getAdjustedTimestamp(now.toISOString());
     const newLog = {
       id: Math.random().toString(36).substring(2),
-      created_at: now.toISOString(),
+      created_at: targetDateStr,
       status,
       note: 'Ghi nhận qua Telegram Bot'
     };
 
     let updatedContent = content;
-    if (status === 'taken') {
-      // Lọc bỏ tất cả các log của ngày hôm nay (giờ VN) trước khi lưu trạng thái 'taken'
-      updatedContent = content.filter(log => !isSameDayVN(log.created_at, now.toISOString()));
+    if (status === 'taken' || status === 'off') {
+      // Lọc bỏ tất cả các log của ngày targetDateStr (giờ VN) trước khi lưu trạng thái 'taken' hoặc 'off'
+      updatedContent = content.filter(log => !isSameDayVN(log.created_at, targetDateStr));
     }
 
     updatedContent.push(newLog);
     const updatedContentB64 = Buffer.from(JSON.stringify(updatedContent, null, 2)).toString('base64');
     const putBody = {
-      message: status === 'taken' ? 'Register taken and clean daily logs' : 'Add medicine log via Telegram',
+      message: status === 'taken' ? 'Register taken and clean daily logs' : 
+               status === 'off' ? 'Register off and clean daily logs' : 'Add medicine log via Telegram',
       content: updatedContentB64,
     };
     if (sha) putBody.sha = sha;
@@ -131,14 +150,22 @@ export default async function handler(req, res) {
     await editMessageText(`Tuyệt vời! Anh ghi nhận em đã uống thuốc lúc ${nowStr} rồi nhé. Ngoan lắm! 💕`);
     await answerCallbackQuery('Đã ghi nhận uống thuốc! 🌸');
     
+  } else if (callbackData === 'off') {
+    await saveLog('off');
+    await editMessageText(`Anh ghi nhận hôm nay em nghỉ ngơi uống thuốc nhé! Nghỉ khỏe nha em iu 💤`);
+    await answerCallbackQuery('Đã ghi nhận nghỉ uống thuốc! 💤');
+
   } else if (callbackData === 'later') {
     await saveLog('delayed');
     const replyMarkup = {
       inline_keyboard: [
-        [{ text: 'Đã uống 🌸', callback_data: 'taken' }]
+        [
+          { text: 'Đã uống 🌸', callback_data: 'taken' },
+          { text: 'Nay em nghỉ 💤', callback_data: 'off' }
+        ]
       ]
     };
-    await editMessageText('Oki em iu, nhớ uống thuốc nhé! Khi nào uống xong em bấm nút "Đã uống 🌸" dưới đây nha. ⏰', replyMarkup);
+    await editMessageText('Oki em iu, nhớ uống thuốc nhé! Khi nào uống hoặc nghỉ em chọn ở nút dưới nha. ⏰', replyMarkup);
     await answerCallbackQuery('Đã hẹn tí nữa uống!');
 
     // Kích hoạt GitHub Action workflow báo lại sau 10 phút
@@ -169,14 +196,22 @@ export default async function handler(req, res) {
     await editMessageText(`[Test] Tuyệt vời! Anh ghi nhận em đã uống thuốc lúc ${nowStr} rồi nhé. (Không ghi vào DB) 💕`);
     await answerCallbackQuery('Test thành công! 🌸');
     
+  } else if (callbackData === 'test_off') {
+    // Không ghi nhận log vào DB
+    await editMessageText(`[Test] Anh ghi nhận hôm nay em nghỉ ngơi uống thuốc nhé! (Không ghi vào DB) 💤`);
+    await answerCallbackQuery('Test nghỉ uống thuốc thành công!');
+
   } else if (callbackData === 'test_later') {
     // Không ghi nhận log vào DB
     const replyMarkup = {
       inline_keyboard: [
-        [{ text: 'Đã uống 🌸 (Test)', callback_data: 'test_taken' }]
+        [
+          { text: 'Đã uống 🌸 (Test)', callback_data: 'test_taken' },
+          { text: 'Nay em nghỉ 💤 (Test)', callback_data: 'test_off' }
+        ]
       ]
     };
-    await editMessageText('Oki em iu, nhớ uống thuốc nhé! Khi nào uống xong em bấm nút "Đã uống (Test)" dưới đây nha. ⏰ (Bản thử nghiệm)', replyMarkup);
+    await editMessageText('Oki em iu, nhớ uống thuốc nhé! Khi nào uống xong hoặc nghỉ em bấm nút dưới nha. ⏰ (Bản thử nghiệm)', replyMarkup);
     await answerCallbackQuery('Test hẹn tí nữa thành công!');
   }
 

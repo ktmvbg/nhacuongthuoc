@@ -73,6 +73,40 @@ app.post('/api/logs', async (req, res) => {
     'User-Agent': 'Local-Server'
   };
 
+  // Helper kiểm tra xem hai mốc thời gian có cùng ngày theo giờ Việt Nam (GMT+7) không
+  function isSameDayVN(dateStr1, dateStr2) {
+    try {
+      const d1 = new Date(dateStr1);
+      const d2 = new Date(dateStr2);
+      const getVNString = (d) => d.toLocaleDateString('en-US', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+      return getVNString(d1) === getVNString(d2);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Helper dịch chuyển thời gian về ngày hôm trước nếu giờ Việt Nam < 12:00 trưa (trước 12h trưa)
+  function getAdjustedTimestamp(dateStr) {
+    try {
+      const date = new Date(dateStr);
+      // Giờ Việt Nam bằng giờ UTC cộng 7 tiếng
+      const vnTime = new Date(date.getTime() + 7 * 60 * 60 * 1000);
+      const vnHour = vnTime.getUTCHours();
+      if (vnHour < 12) {
+        // Trừ đi 24 giờ để lùi lại 1 ngày
+        return new Date(date.getTime() - 24 * 60 * 60 * 1000).toISOString();
+      }
+      return date.toISOString();
+    } catch (e) {
+      return dateStr;
+    }
+  }
+
   try {
     let content = [];
     let sha = null;
@@ -85,18 +119,28 @@ app.post('/api/logs', async (req, res) => {
       content = JSON.parse(decoded);
     }
 
+    const rawDateStr = created_at || new Date().toISOString();
+    const targetDateStr = getAdjustedTimestamp(rawDateStr);
+
     const newLog = {
       id: Math.random().toString(36).substring(2),
-      created_at: created_at || new Date().toISOString(),
+      created_at: targetDateStr,
       status,
       note: note || null
     };
 
-    content.push(newLog);
-    const updatedContentB64 = Buffer.from(JSON.stringify(content, null, 2)).toString('base64');
+    let updatedContent = content;
+    if (status === 'taken' || status === 'off') {
+      // Lọc bỏ tất cả các log của ngày targetDateStr trước khi lưu trạng thái 'taken' hoặc 'off'
+      updatedContent = content.filter(log => !isSameDayVN(log.created_at, targetDateStr));
+    }
+
+    updatedContent.push(newLog);
+    const updatedContentB64 = Buffer.from(JSON.stringify(updatedContent, null, 2)).toString('base64');
 
     const body = {
-      message: 'Add medicine log via local dev',
+      message: status === 'taken' ? 'Register taken and clean daily logs via local dev' : 
+               status === 'off' ? 'Register off and clean daily logs via local dev' : 'Add medicine log via local dev',
       content: updatedContentB64,
     };
     if (sha) {

@@ -14,7 +14,8 @@ export default async function handler(req, res) {
     inline_keyboard: [
       [
         { text: 'Đã uống 🌸 (Test)', callback_data: 'test_taken' },
-        { text: 'Để tí nữa ⏰ (Test)', callback_data: 'test_later' }
+        { text: 'Để tí nữa ⏰ (Test)', callback_data: 'test_later' },
+        { text: 'Nay em nghỉ 💤 (Test)', callback_data: 'test_off' }
       ]
     ]
   };

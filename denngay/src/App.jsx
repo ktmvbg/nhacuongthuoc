@@ -61,21 +61,39 @@ function App() {
   const [stardustLogs, setStardustLogs] = useState(null);
   const [googleUser, setGoogleUser] = useState(null);
   const [rowndToken, setRowndToken] = useState(null);
-  const [googleClientId, setGoogleClientId] = useState(
-    localStorage.getItem('google_client_id') || '900415098360-ritfis4563e74sluvre9nsmhi2oa4uf0.apps.googleusercontent.com'
-  );
   const [isSyncingStardust, setIsSyncingStardust] = useState(false);
-  const [showClientIdInput, setShowClientIdInput] = useState(false);
 
-  // Tải session đã lưu của Stardust khi khởi chạy
+  // Hook theo dõi Rownd SDK và tải session Stardust
   useEffect(() => {
-    // Tự động dọn dẹp Client ID có lỗi chính tả trong localStorage của người dùng
-    const savedId = localStorage.getItem('google_client_id');
-    if (savedId && (savedId.includes('ritfls') || savedId.includes('slvvre'))) {
-      localStorage.removeItem('google_client_id');
-      setGoogleClientId('900415098360-ritfis4563e74sluvre9nsmhi2oa4uf0.apps.googleusercontent.com');
-    }
+    const checkInterval = setInterval(async () => {
+      if (window.rownd && window.rownd.is_authenticated) {
+        try {
+          const token = await window.rownd.getAccessToken();
+          if (token && token !== rowndToken) {
+            const payload = decodeJwt(token);
+            const user = {
+              name: payload?.name || payload?.email || 'Người dùng Stardust',
+              email: payload?.email,
+              picture: payload?.picture || 'https://lh3.googleusercontent.com/a/default-user'
+            };
+            setGoogleUser(user);
+            setRowndToken(token);
+            localStorage.setItem('stardust_session', JSON.stringify({
+              googleUser: user,
+              rowndToken: token
+            }));
+            await fetchStardustLogs(token);
+          }
+        } catch (err) {
+          console.error("Lỗi khi lấy Rownd Token:", err);
+        }
+      }
+    }, 500);
+    return () => clearInterval(checkInterval);
+  }, [rowndToken]);
 
+  // Tải session đã lưu của Stardust khi khởi chạy (Dự phòng)
+  useEffect(() => {
     const rawSession = localStorage.getItem('stardust_session');
     if (rawSession) {
       try {
@@ -127,96 +145,12 @@ function App() {
     }
   };
 
-  const handleGoogleIdToken = async (idToken) => {
-    const payload = decodeJwt(idToken);
-    let user = null;
-    if (payload) {
-      user = {
-        name: payload.name,
-        email: payload.email,
-        picture: payload.picture
-      };
-      setGoogleUser(user);
+  const loginWithRownd = () => {
+    if (window.rownd) {
+      window.rownd.requestSignIn({ method: 'google' });
+    } else {
+      alert('Đang khởi tạo thư viện đăng nhập. Vui lòng đợi trong giây lát...');
     }
-
-    setIsSyncingStardust(true);
-    try {
-      const authRes = await fetch(`${API_URL}/api/authenticate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_token: idToken })
-      });
-
-      const authData = await authRes.json();
-      if (authRes.ok && authData.access_token) {
-        setRowndToken(authData.access_token);
-        localStorage.setItem('stardust_session', JSON.stringify({
-          googleUser: user,
-          rowndToken: authData.access_token
-        }));
-        await fetchStardustLogs(authData.access_token);
-      } else {
-        throw new Error(authData.error || 'Authentication failed');
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Đăng nhập Stardust thất bại: ' + err.message);
-    } finally {
-      setIsSyncingStardust(false);
-    }
-  };
-
-  const loginWithGooglePopup = () => {
-    const client_id = googleClientId.trim();
-    if (!client_id) {
-      alert('Vui lòng cấu hình Google Client ID trước.');
-      return;
-    }
-    const redirect_uri = window.location.origin;
-    const scope = 'openid email profile';
-    const nonce = 'stardust_' + Math.random().toString(36).substring(2);
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${client_id}&redirect_uri=${encodeURIComponent(redirect_uri)}&response_type=id_token&scope=${encodeURIComponent(scope)}&nonce=${nonce}`;
-    
-    const width = 500;
-    const height = 650;
-    const left = (window.screen.width - width) / 2;
-    const top = (window.screen.height - height) / 2;
-    
-    const popup = window.open(
-      authUrl,
-      'GoogleLoginPopup',
-      `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes`
-    );
-    
-    if (!popup) {
-      alert('Trình duyệt đã chặn cửa sổ Popup. Vui lòng cho phép popup để đăng nhập bằng Google.');
-      return;
-    }
-    
-    const pollTimer = window.setInterval(() => {
-      try {
-        if (popup.closed) {
-          window.clearInterval(pollTimer);
-          return;
-        }
-        
-        if (popup.location.origin === window.location.origin) {
-          const hash = popup.location.hash;
-          if (hash) {
-            window.clearInterval(pollTimer);
-            popup.close();
-            
-            const params = new URLSearchParams(hash.substring(1));
-            const idToken = params.get('id_token');
-            if (idToken) {
-              handleGoogleIdToken(idToken);
-            }
-          }
-        }
-      } catch (e) {
-        // Bỏ qua lỗi CORS khi ở domain Google
-      }
-    }, 500);
   };
 
   const handleStardustLogout = () => {
@@ -224,13 +158,9 @@ function App() {
     setGoogleUser(null);
     setRowndToken(null);
     setStardustLogs(null);
-  };
-
-  const handleSaveClientId = (newId) => {
-    localStorage.setItem('google_client_id', newId);
-    setGoogleClientId(newId);
-    alert('Đã lưu Google Client ID thành công! 🌸');
-    setShowClientIdInput(false);
+    if (window.rownd && window.rownd.signOut) {
+      window.rownd.signOut();
+    }
   };
 
   // Map dữ liệu để tra cứu nhanh theo ngày YYYY-MM-DD
@@ -266,9 +196,9 @@ function App() {
   };
 
   const calculateStreak = (allLogs) => {
-    // Chỉ tính các ngày có trạng thái "taken" (Đã uống)
+    // Chỉ tính các ngày có trạng thái "taken" (Đã uống) hoặc "off" (Nay em nghỉ)
     const takenDates = allLogs
-      .filter((log) => log.status === 'taken')
+      .filter((log) => log.status === 'taken' || log.status === 'off')
       .map((log) => {
         const d = new Date(log.created_at);
         return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -431,6 +361,9 @@ function App() {
       if (dayLogs.some((l) => l.status === 'taken')) {
         cellClass = 'taken';
         heartIcon = '💖';
+      } else if (dayLogs.some((l) => l.status === 'off')) {
+        cellClass = 'off';
+        heartIcon = '💤';
       } else if (dayLogs.some((l) => l.status === 'delayed')) {
         cellClass = 'delayed';
         heartIcon = '⏰';
@@ -515,6 +448,7 @@ function App() {
                 onChange={(e) => setFormStatus(e.target.value)}
               >
                 <option value="taken">Đã uống 🌸</option>
+                <option value="off">Nay em nghỉ 💤</option>
                 <option value="delayed">Hẹn tí nữa ⏰</option>
               </select>
 
@@ -565,46 +499,12 @@ function App() {
                 
                 <button
                   type="button"
-                  onClick={loginWithGooglePopup}
+                  onClick={loginWithRownd}
                   className="btn-pink"
                   style={{ width: '100%' }}
                 >
-                  Đăng nhập Google 🔑
+                  Đăng nhập bằng Google 🔑
                 </button>
-
-                <div style={{ marginTop: '8px', textAlign: 'center' }}>
-                  <a
-                    href="#configure"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setShowClientIdInput(!showClientIdInput);
-                    }}
-                    style={{ fontSize: '0.8rem', color: 'var(--pink-hover)', textDecoration: 'underline', cursor: 'pointer' }}
-                  >
-                    {showClientIdInput ? 'Ẩn cấu hình Client ID' : 'Cấu hình Google Client ID'}
-                  </a>
-                </div>
-
-                {showClientIdInput && (
-                  <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <label style={{ fontSize: '0.8rem', fontWeight: 600 }}>Google Client ID:</label>
-                    <input
-                      type="text"
-                      value={googleClientId}
-                      onChange={(e) => setGoogleClientId(e.target.value)}
-                      placeholder="Nhập Google Client ID của bạn..."
-                      style={{ fontSize: '0.8rem', padding: '8px' }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleSaveClientId(googleClientId)}
-                      className="btn-pink"
-                      style={{ fontSize: '0.85rem', padding: '6px 12px', background: '#7209b7' }}
-                    >
-                      Lưu ID
-                    </button>
-                  </div>
-                )}
               </div>
             ) : (
               <div>
@@ -782,11 +682,12 @@ function App() {
                 {logs.slice(0, 10).map((log) => (
                   <div
                     key={log.id}
-                    className={`history-item ${log.status === 'delayed' ? 'delayed' : ''}`}
+                    className={`history-item ${log.status === 'delayed' ? 'delayed' : ''} ${log.status === 'off' ? 'off' : ''}`}
                   >
                     <div className="history-item-left">
                       <span className="history-status">
-                        {log.status === 'taken' ? '🌸 Đã uống thuốc' : '⏰ Hẹn nhắc lại sau'}
+                        {log.status === 'taken' ? '🌸 Đã uống thuốc' : 
+                         log.status === 'off' ? '💤 Nay em nghỉ' : '⏰ Hẹn nhắc lại sau'}
                       </span>
                       {log.note && (
                         <span style={{ fontSize: '0.85rem', opacity: 0.8 }}>

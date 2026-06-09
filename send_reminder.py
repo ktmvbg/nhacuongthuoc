@@ -33,7 +33,8 @@ reply_markup = {
     "inline_keyboard": [
         [
             {"text": "Đã uống 🌸", "callback_data": "taken"},
-            {"text": "Để tí nữa ⏰", "callback_data": "later"}
+            {"text": "Để tí nữa ⏰", "callback_data": "later"},
+            {"text": "Nay em nghỉ 💤", "callback_data": "off"}
         ]
     ]
 }

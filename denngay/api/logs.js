@@ -71,7 +71,25 @@ export default async function handler(req, res) {
       }
     }
 
-    const targetDateStr = created_at || new Date().toISOString();
+    // Helper dịch chuyển thời gian về ngày hôm trước nếu giờ Việt Nam < 12:00 trưa (trước 12h trưa)
+    function getAdjustedTimestamp(dateStr) {
+      try {
+        const date = new Date(dateStr);
+        // Giờ Việt Nam bằng giờ UTC cộng 7 tiếng
+        const vnTime = new Date(date.getTime() + 7 * 60 * 60 * 1000);
+        const vnHour = vnTime.getUTCHours();
+        if (vnHour < 12) {
+          // Trừ đi 24 giờ để lùi lại 1 ngày
+          return new Date(date.getTime() - 24 * 60 * 60 * 1000).toISOString();
+        }
+        return date.toISOString();
+      } catch (e) {
+        return dateStr;
+      }
+    }
+
+    const rawDateStr = created_at || new Date().toISOString();
+    const targetDateStr = getAdjustedTimestamp(rawDateStr);
 
     // Tạo bản ghi mới, hỗ trợ custom created_at
     const newLog = {
@@ -82,8 +100,8 @@ export default async function handler(req, res) {
     };
 
     let updatedContent = content;
-    if (status === 'taken') {
-      // Lọc bỏ tất cả các log của ngày hôm nay (hoặc ngày của targetDateStr) trước khi lưu trạng thái 'taken'
+    if (status === 'taken' || status === 'off') {
+      // Lọc bỏ tất cả các log của ngày targetDateStr trước khi lưu trạng thái 'taken' hoặc 'off'
       updatedContent = content.filter(log => !isSameDayVN(log.created_at, targetDateStr));
     }
 
@@ -91,7 +109,8 @@ export default async function handler(req, res) {
     const updatedContentB64 = Buffer.from(JSON.stringify(updatedContent, null, 2)).toString('base64');
 
     const body = {
-      message: status === 'taken' ? 'Register taken and clean daily logs via web' : 'Add medicine log via web',
+      message: status === 'taken' ? 'Register taken and clean daily logs via web' : 
+               status === 'off' ? 'Register off and clean daily logs via web' : 'Add medicine log via web',
       content: updatedContentB64,
     };
     if (sha) {
