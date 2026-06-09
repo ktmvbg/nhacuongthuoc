@@ -23,7 +23,10 @@ export default async function handler(req, res) {
   // Hàm đọc file db.json từ GitHub
   async function getFile() {
     try {
-      const response = await fetch(url, { headers });
+      const response = await fetch(url, { 
+        headers,
+        cache: 'no-store'
+      });
       if (response.status === 404) {
         return { content: [], sha: null };
       }
@@ -40,6 +43,9 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'GET') {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     const { content } = await getFile();
     // Trả về danh sách logs sắp xếp từ mới nhất đến cũ nhất
     const sorted = content.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));

@@ -30,7 +30,10 @@ export default async function handler(req, res) {
   // Đọc file db.json hiện tại từ GitHub
   async function getFile() {
     try {
-      const response = await fetch(url, { headers: gitHeaders });
+      const response = await fetch(url, { 
+        headers: gitHeaders,
+        cache: 'no-store'
+      });
       if (response.status === 404) {
         return { content: [], sha: null };
       }
